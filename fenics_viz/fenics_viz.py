@@ -9,6 +9,7 @@ from matplotlib.colors       import from_levels_and_colors
 from mpl_toolkits.axes_grid1 import make_axes_locatable, inset_locator
 import matplotlib.pyplot         as plt
 import matplotlib.tri            as tri
+import dolfin_adjoint
 import os
 
 
@@ -33,6 +34,7 @@ def print_text(text, color='white', atrb=0, cls=None):
     else:
       text = ('%s' + text + '%s') % (fg(color), attr(0))
     print text
+
 
 def print_min_max(u, title, color='97'):
   """
@@ -74,6 +76,7 @@ def print_min_max(u, title, color='97'):
          + ", array, int or float, not %s." % type(u)
     print_text(er, 'red', 1)
 
+
 def plot_matrix(M, title, continuous=False, cmap='Greys'):
   """
   plot a matrix <M> with title <title> and a colorbar on subplot (axes object) 
@@ -100,12 +103,18 @@ def plot_matrix(M, title, continuous=False, cmap='Greys'):
     cb.set_ticks(unq)
     cb.set_ticklabels(unq)
 
+
 def mesh2triang(mesh):
-    xy = mesh.coordinates()
-    return tri.Triangulation(xy[:, 0], xy[:, 1], mesh.cells())
+  """
+  create a matplotlib.tri.Triangulation object from a fenics mesh.
+  """ 
+  xy = mesh.coordinates()
+  return tri.Triangulation(xy[:, 0], xy[:, 1], mesh.cells())
 
 
 def plot_variable(u, name, direc, 
+                  coords              = None,
+                  cells               = None,
                   figsize             = (8,7),
                   cmap                = 'gist_yarg',
                   scale               = 'lin',
@@ -116,7 +125,7 @@ def plot_variable(u, name, direc,
                   umax                = None,
                   normalize_vec       = False,
                   tp                  = False,
-                  tpAlpha             = 0.5,
+                  tp_kwargs           = None,
                   show                = True,
                   hide_ax_tick_labels = False,
                   xlabel              = r'$x$',
@@ -134,39 +143,71 @@ def plot_variable(u, name, direc,
                   cb_format           = '%.1e'):
   """
   """
-  vec  = False
-  if len(u.ufl_shape) == 1:
-    if type(u[0]) == indexed.Indexed:
-      out    = u.split(True)
+  vec = False  # assume initially that 'u' is not a vector
+
+  # if 'u' is a NumPy array and the cell arrays and coordinates are supplied :
+  if (type(u) == np.ndarray or type(u) == list or type(u) == tuple) \
+    and type(cells) == np.ndarray and len(coords) == 2:
+    t = cells;
+    x = coords[0]
+    y = coords[1]
+    v = u
+   
+    # if there are multiple components to 'u', it is a vector :
+    if len(np.shape(u)) > 1:
+      vec = True  # used for plotting below
+      v0  = u[0]
+      v1  = u[1]
+      # compute norm :
+      v     = 0
+      for k in u:
+        v  += k**2
+      v     = np.sqrt(v + 1e-16)
+
+  # if 'u' is a FEniCS Function :
+  elif    type(u) == indexed.Indexed \
+       or type(u) == dolfin.function.Function \
+       or type(u) == dolfin_adjoint.function.Function:
+    
+    # if this is a scalar :
+    if len(u.ufl_shape) == 0:
+      mesh     = u.function_space().mesh()
+      v        = u.compute_vertex_values(mesh)
+    
+    # otherwise it is a vector, so calculate the L^2 norm :
     else:
-      out    = u
-    vec      = True
-    v        = 0
-    mesh     = out[0].function_space().mesh()
-    for k in out:
-      kv  = k.compute_vertex_values(mesh)
-      v  += kv**2
-    v = np.sqrt(v + 1e-16)
-    v0       = out[0].compute_vertex_values(mesh)
-    v1       = out[1].compute_vertex_values(mesh)
-    if normalize_vec:
-      v2_mag   = np.sqrt(v0**2 + v1**2 + 1e-16)
-      v0       = v0 / v2_mag
-      v1       = v1 / v2_mag
-  elif len(u.ufl_shape) == 0:
-    mesh     = u.function_space().mesh()
-    if u.vector().size() == mesh.num_cells():
-      v       = u.vector().array()
-    else:
-      v       = u.compute_vertex_values(mesh)
-  x    = mesh.coordinates()[:,0]
-  y    = mesh.coordinates()[:,1]
-  t    = mesh.cells()
+      vec = True  # used for plotting below
+      # if the function is defined on a mixed space, deepcopy :
+      # TODO: there is a way to do this without deepcopy
+      if type(u[0]) == indexed.Indexed:
+        out    = u.split(True)
+      else:
+        out    = u
+      
+      # extract the mesh :
+      mesh = out[0].function_space().mesh()
+    
+      # compute norm :
+      v     = 0
+      for k in out:
+        kv  = k.compute_vertex_values(mesh)
+        v  += kv**2
+      v     = np.sqrt(v + 1e-16)
+      v0    = out[0].compute_vertex_values(mesh)
+      v1    = out[1].compute_vertex_values(mesh)
+
+    t    = mesh.cells()
+    x    = mesh.coordinates()[:,0]
+    y    = mesh.coordinates()[:,1]
+
+  # if normalized vectors are desired :
+  if vec and normalize_vec:
+    v0 = v0 / v
+    v1 = v1 / v
   
-  d    = os.path.dirname(direc)
-  if not os.path.exists(d):
-    os.makedirs(d)
- 
+  if vec:  print_text("::: plotting vector variable :::", 'red')
+  else:    print_text("::: plotting scalar variable :::", 'red')
+
   #=============================================================================
   # plotting :
   if umin != None and levels is None:
@@ -228,13 +269,15 @@ def plot_variable(u, name, direc,
     ax.axis('equal')
 
   if contour_type == 'filled':
-    if u.vector().size() == mesh.num_cells():
+    # if the number of degrees equal the number of cells, a DG space is used :
+    if len(v) == len(t):
       cs = ax.tripcolor(mesh2triang(mesh), v, shading='flat',
                         cmap=cmap, norm=norm)
-    elif u.vector().size() != mesh.num_cells() and scale != 'log':
+    # otherwise, a CG space is used :
+    elif len(v) != len(t) and scale != 'log':
       cs = ax.tricontourf(x, y, t, v, levels=levels, 
                           cmap=cmap, norm=norm, extend=extend)
-    elif u.vector().size() != mesh.num_cells() and scale == 'log':
+    elif len(v) != len(t)  and scale == 'log':
       cs = ax.tricontourf(x, y, t, v, levels=levels, 
                           cmap=cmap, norm=norm)
   elif contour_type == 'lines':
@@ -263,7 +306,7 @@ def plot_variable(u, name, direc,
   
   # plot triangles :
   if tp == True:
-    tp = ax.triplot(x, y, t, 'k-', lw=0.2, alpha=tpAlpha)
+    tp = ax.triplot(x, y, t, **tp_kwargs)
   
   # this enforces equal axes no matter what (yeah, a hack) : 
   divider = make_axes_locatable(ax)
@@ -284,31 +327,18 @@ def plot_variable(u, name, direc,
   # title :
   tit = plt.title(title)
   #tit.set_fontsize(40)
-
+  
+  # create the output directory : 
   d     = os.path.dirname(direc)
   if not os.path.exists(d):
     os.makedirs(d)
-  plt.savefig(direc + name + ext, res=res)
-  if show:
-    plt.show()
-  plt.close(fig)
 
-def plot_new(obj):
-    plt.gca().set_aspect('equal')
-    if isinstance(obj, Function):
-        mesh = obj.function_space().mesh()
-        if (mesh.geometry().dim() != 2):
-            raise(AttributeError)
-        if obj.vector().size() == mesh.num_cells():
-            C = obj.vector().array()
-            plt.tripcolor(mesh2triang(mesh), C)
-        else:
-            C = obj.compute_vertex_values(mesh)
-            plt.tripcolor(mesh2triang(mesh), C, shading='gouraud')
-    elif isinstance(obj, Mesh):
-        if (obj.geometry().dim() != 2):
-            raise(AttributeError)
-        plt.triplot(mesh2triang(obj), color='k')
+  # always save the figure to a file :
+  plt.savefig(direc + name + ext, res=res)
+
+  # show the figure too, if desired : 
+  if show: plt.show()
+  else:    plt.close(fig)
 
 
 
