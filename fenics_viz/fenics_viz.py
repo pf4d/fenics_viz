@@ -125,7 +125,10 @@ def plot_variable(u, name, direc,
                   umax                = None,
                   normalize_vec       = False,
                   tp                  = False,
-                  tp_kwargs           = None,
+                  tp_kwargs           = {'linestyle'      : '-',
+                                         'lw'             : 1.0,
+                                         'color'          : 'k',
+                                         'alpha'          : 0.5},
                   show                = True,
                   hide_ax_tick_labels = False,
                   xlabel              = r'$x$',
@@ -137,7 +140,12 @@ def plot_variable(u, name, direc,
                   contour_type        = 'filled',
                   extend              = 'neither',
                   ext                 = '.pdf',
-                  quiver_kwargs       = None,
+                  quiver_kwargs       = {'pivot'          : 'middle',
+                                         'color'          : 'k',
+                                         'width'          : 0.004,
+                                         'headwidth'      : 4.0, 
+                                         'headlength'     : 4.0, 
+                                         'headaxislength' : 4.0},
                   res                 = 150,
                   cb                  = True,
                   cb_format           = '%.1e'):
@@ -167,6 +175,7 @@ def plot_variable(u, name, direc,
   # if 'u' is a FEniCS Function :
   elif    type(u) == indexed.Indexed \
        or type(u) == dolfin.function.Function \
+       or type(u) == dolfin.functions.function.Function \
        or type(u) == dolfin_adjoint.function.Function:
     
     # if this is a scalar :
