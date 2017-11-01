@@ -1,15 +1,16 @@
 from colored                 import fg, attr
-from pylab                   import *
-from fenics                  import *
 from scipy.sparse            import spdiags
 from ufl                     import indexed
 from matplotlib              import colors, ticker
 from matplotlib.ticker       import LogFormatter, ScalarFormatter
 from matplotlib.colors       import from_levels_and_colors
 from mpl_toolkits.axes_grid1 import make_axes_locatable, inset_locator
+import numpy                     as np
 import matplotlib.pyplot         as plt
 import matplotlib.tri            as tri
-import dolfin_adjoint
+import matplotlib                as mpl
+import fenics                    as fe
+import dolfin_adjoint            as da
 import os
 
 
@@ -28,7 +29,7 @@ def print_text(text, color='white', atrb=0, cls=None):
   """
   if cls is not None:
     color = cls.color()
-  if MPI.rank(mpi_comm_world())==0:
+  if fe.MPI.rank(fe.mpi_comm_world())==0:
     if atrb != 0:
       text = ('%s%s' + text + '%s') % (fg(color), attr(atrb), attr(0))
     else:
@@ -47,28 +48,28 @@ def print_min_max(u, title, color='97'):
   :type title: string
   :type color: string
   """
-  if isinstance(u, GenericVector):
-    uMin = MPI.min(mpi_comm_world(), u.min())
-    uMax = MPI.max(mpi_comm_world(), u.max())
+  if isinstance(u, fe.GenericVector):
+    uMin = MPI.min(fe.mpi_comm_world(), u.min())
+    uMax = MPI.max(fe.mpi_comm_world(), u.max())
     s    = title + ' <min, max> : <%.3e, %.3e>' % (uMin, uMax)
     print_text(s, color)
-  elif isinstance(u, ndarray):
-    if u.dtype != float64:
-      u = u.astype(float64)
-    uMin = MPI.min(mpi_comm_world(), u.min())
-    uMax = MPI.max(mpi_comm_world(), u.max())
+  elif isinstance(u, np.ndarray):
+    if u.dtype != np.float64:
+      u = u.astype(np.float64)
+    uMin = fe.MPI.min(mpi_comm_world(), u.min())
+    uMax = fe.MPI.max(mpi_comm_world(), u.max())
     s    = title + ' <min, max> : <%.3e, %.3e>' % (uMin, uMax)
     print_text(s, color)
-  elif isinstance(u, Function):# \
+  elif isinstance(u, fe.Function):# \
     #   or isinstance(u, dolfin.functions.function.Function):
-    uMin = MPI.min(mpi_comm_world(), u.vector().min())
-    uMax = MPI.max(mpi_comm_world(), u.vector().max())
+    uMin = MPI.min(fe.mpi_comm_world(), u.vector().min())
+    uMax = MPI.max(fe.mpi_comm_world(), u.vector().max())
     s    = title + ' <min, max> : <%.3e, %.3e>' % (uMin, uMax)
     print_text(s, color)
   elif isinstance(u, int) or isinstance(u, float):
     s    = title + ' : %.3e' % u
     print_text(s, color)
-  elif isinstance(u, Constant):
+  elif isinstance(u, fe.Constant):
     s    = title + ' : %.3e' % u(0)
     print_text(s, color)
   else:
@@ -86,11 +87,11 @@ def plot_matrix(M, title, continuous=False, cmap='Greys'):
   m,n  = np.shape(M)
   M    = M.round(decimals=9)
 
-  fig  = figure()
+  fig  = plt.figure()
   ax   = fig.add_subplot(111)
-  cmap = cm.get_cmap(cmap)
+  cmap = mpl.cm.get_cmap(cmap)
   if not continuous:
-    unq  = unique(M)
+    unq  = np.unique(M)
     num  = len(unq)
   im      = ax.imshow(M, cmap=cmap, interpolation='None')
   divider = make_axes_locatable(ax)
@@ -98,7 +99,7 @@ def plot_matrix(M, title, continuous=False, cmap='Greys'):
   dim     = r'$%i \times %i$ ' % (m,n)
   ax.set_title(dim + title)
   ax.axis('off')
-  cb = colorbar(im, cax=cax)
+  cb = plt.colorbar(im, cax=cax)
   if not continuous:
     cb.set_ticks(unq)
     cb.set_ticklabels(unq)
@@ -124,7 +125,7 @@ def plot_variable(u, name, direc,
                   umin                = None,
                   umax                = None,
                   normalize_vec       = False,
-                  tp                  = False,
+                  plot_tp             = False,
                   tp_kwargs           = {'linestyle'      : '-',
                                          'lw'             : 1.0,
                                          'color'          : 'k',
@@ -140,8 +141,10 @@ def plot_variable(u, name, direc,
                   contour_type        = 'filled',
                   extend              = 'neither',
                   ext                 = '.pdf',
+                  plot_quiver         = True,
                   quiver_kwargs       = {'pivot'          : 'middle',
                                          'color'          : 'k',
+                                         'alpha'          : 0.8,
                                          'width'          : 0.004,
                                          'headwidth'      : 4.0, 
                                          'headlength'     : 4.0, 
@@ -174,9 +177,9 @@ def plot_variable(u, name, direc,
 
   # if 'u' is a FEniCS Function :
   elif    type(u) == indexed.Indexed \
-       or type(u) == dolfin.function.Function \
-       or type(u) == dolfin.functions.function.Function \
-       or type(u) == dolfin_adjoint.function.Function:
+       or type(u) == fe.dolfin.function.Function \
+       or type(u) == fe.dolfin.functions.function.Function \
+       or type(u) == da.function.Function:
     
     # if this is a scalar :
     if len(u.ufl_shape) == 0:
@@ -234,7 +237,7 @@ def plot_variable(u, name, direc,
     vmax = v.max()
   
   # set the extended colormap :  
-  cmap = get_cmap(cmap)
+  cmap = plt.get_cmap(cmap)
   
   # countour levels :
   if scale == 'log':
@@ -294,7 +297,7 @@ def plot_variable(u, name, direc,
                        levels=levels, colors='k') 
     for line in cs.collections:
       if line.get_linestyle() != [(None, None)]:
-        line.set_linestyle([(None, None)])
+        #line.set_linestyle([(None, None)])
         line.set_color('red')
         line.set_linewidth(1.5)
     if levels_2 is not None:
@@ -304,17 +307,14 @@ def plot_variable(u, name, direc,
           line.set_linestyle([(None, None)])
           line.set_color('#c1000e')
           line.set_linewidth(0.5)
-    ax.clabel(cs, inline=1, colors='k', fmt='%i')
+    ax.clabel(cs, inline=1)
 
-
-  if vec:
-    if quiver_kwargs is not None:
-      q  = ax.quiver(x, y, v0, v1, **quiver_kwargs)
-    else:
-      q  = ax.quiver(x, y, v0, v1)
+  # plot vectors, if desired :
+  if vec and plot_quiver:
+    q  = ax.quiver(x, y, v0, v1, **quiver_kwargs)
   
-  # plot triangles :
-  if tp == True:
+  # plot triangles, if desired :
+  if plot_tp == True:
     tp = ax.triplot(x, y, t, **tp_kwargs)
   
   # this enforces equal axes no matter what (yeah, a hack) : 
