@@ -12,6 +12,7 @@ import matplotlib                as mpl
 import fenics                    as fe
 import dolfin_adjoint            as da
 import os
+import sys
 
 
 def print_text(text, color='white', atrb=0, cls=None):
@@ -56,8 +57,8 @@ def print_min_max(u, title, color='97'):
   elif isinstance(u, np.ndarray):
     if u.dtype != np.float64:
       u = u.astype(np.float64)
-    uMin = fe.MPI.min(mpi_comm_world(), u.min())
-    uMax = fe.MPI.max(mpi_comm_world(), u.max())
+    uMin = fe.MPI.min(fe.mpi_comm_world(), u.min())
+    uMax = fe.MPI.max(fe.mpi_comm_world(), u.max())
     s    = title + ' <min, max> : <%.3e, %.3e>' % (uMin, uMax)
     print_text(s, color)
   elif isinstance(u, fe.Function):# \
@@ -131,7 +132,10 @@ def plot_variable(u, name, direc,
                                          'color'          : 'k',
                                          'alpha'          : 0.5},
                   show                = True,
-                  hide_ax_tick_labels = False,
+                  hide_x_tick_labels  = False,
+                  hide_y_tick_labels  = False,
+                  vertical_y_labels   = False,
+                  vertical_y_label    = False,
                   xlabel              = r'$x$',
                   ylabel              = r'$y$',
                   equal_axes          = True,
@@ -158,14 +162,18 @@ def plot_variable(u, name, direc,
 
   # if 'u' is a NumPy array and the cell arrays and coordinates are supplied :
   if (type(u) == np.ndarray or type(u) == list or type(u) == tuple) \
-    and type(cells) == np.ndarray and len(coords) == 2:
-    t = cells;
+    and len(coords) == 2:
     x = coords[0]
     y = coords[1]
     v = u
+    
+    if type(cells) == np.ndarray:
+      t = cells
+    else:
+      t = []
    
     # if there are multiple components to 'u', it is a vector :
-    if len(np.shape(u)) > 1:
+    if len(np.shape(u)) > len(np.shape(x)):
       vec = True  # used for plotting below
       v0  = u[0]
       v1  = u[1]
@@ -174,6 +182,12 @@ def plot_variable(u, name, direc,
       for k in u:
         v  += k**2
       v     = np.sqrt(v + 1e-16)
+
+  # if 'u' is a NumPy array and cell/coordinate arrays are not supplied :
+  if (type(u) == np.ndarray or type(u) == list or type(u) == tuple) \
+    and coords is None:
+    print_text(">>> numpy arrays require `coords' <<<", 'red', 1)
+    sys.exit(1)
 
   # if 'u' is a FEniCS Function :
   elif    type(u) == indexed.Indexed \
@@ -216,7 +230,25 @@ def plot_variable(u, name, direc,
   if vec and normalize_vec:
     v0 = v0 / v
     v1 = v1 / v
-  
+
+  """
+  if vec:
+    v0 = np.delete(v0, list(range(0, v0.shape[0], 2)), axis=0)
+    v0 = np.delete(v0, list(range(0, v0.shape[1], 2)), axis=1)
+
+    v1 = np.delete(v1, list(range(0, v1.shape[0], 2)), axis=0)
+    v1 = np.delete(v1, list(range(0, v1.shape[1], 2)), axis=1)
+
+    x  = np.delete(x,  list(range(0, x.shape[0], 2)),  axis=0)
+    x  = np.delete(x,  list(range(0, x.shape[1], 2)),  axis=1)
+
+    y  = np.delete(y,  list(range(0, y.shape[0], 2)),  axis=0)
+    y  = np.delete(y,  list(range(0, y.shape[1], 2)),  axis=1)
+
+    v  = np.delete(v,  list(range(0, v.shape[0], 2)),  axis=0)
+    v  = np.delete(v,  list(range(0, v.shape[1], 2)),  axis=1)
+  """
+
   if vec:  print_text("::: plotting vector variable :::", 'red')
   else:    print_text("::: plotting scalar variable :::", 'red')
 
@@ -271,43 +303,68 @@ def plot_variable(u, name, direc,
   fig = plt.figure(figsize=figsize)
   ax  = fig.add_subplot(111)
   ax.set_xlabel(xlabel)
-  ax.set_ylabel(ylabel)
-  if hide_ax_tick_labels:
+  yl  = ax.set_ylabel(ylabel)
+  if vertical_y_label:
+    yl.set_rotation(0)
+  if hide_x_tick_labels:
     ax.set_xticklabels([])
+    ax.xaxis.set_ticks_position('none')
+  if hide_y_tick_labels:
+    ax.yaxis.set_ticks_position('none')
     ax.set_yticklabels([])
+  if vertical_y_labels:
+    plt.setp(ax.yaxis.get_majorticklabels(), rotation=-90,
+             verticalalignment='center')
+    #for tick in ax.get_yticklabels():
+    #  tick.set_rotation(-90)
   if hide_axis:
     ax.axis('off')
   if equal_axes:
     ax.axis('equal')
 
+  # filled contours :
   if contour_type == 'filled':
+
     # if the number of degrees equal the number of cells, a DG space is used :
     if len(v) == len(t):
       cs = ax.tripcolor(mesh2triang(mesh), v, shading='flat',
                         cmap=cmap, norm=norm)
+
     # otherwise, a CG space is used :
-    elif len(v) != len(t) and scale != 'log':
-      cs = ax.tricontourf(x, y, t, v, levels=levels, 
-                          cmap=cmap, norm=norm, extend=extend)
-    elif len(v) != len(t)  and scale == 'log':
-      cs = ax.tricontourf(x, y, t, v, levels=levels, 
-                          cmap=cmap, norm=norm)
+    else:
+      if len(np.shape(x)) > 1:  cs_ftn = ax.contourf
+      else:                     cs_ftn = ax.tricontourf
+      
+      if   len(v) != len(t) and scale != 'log':
+        cs = cs_ftn(x, y, v, triangles=t, levels=levels, 
+                    cmap=cmap, norm=norm, extend=extend)
+      elif len(v) != len(t)  and scale == 'log':
+        cs = cs_ftn(x, y, v, triangles=t, levels=levels, 
+                    cmap=cmap, norm=norm)
+
+  # non-filled contours :
   elif contour_type == 'lines':
-    cs = ax.tricontour(x, y, t, v, linewidths=2.0,
-                       levels=levels, colors='k') 
+    
+    if len(np.shape(x)) > 1:  cs_ftn = ax.contour
+    else:                     cs_ftn = ax.tricontour
+
+    cs = cs_ftn(x, y, v, triangles=t, linewidths=1.0,
+                levels=levels, colors='k') 
+
     for line in cs.collections:
       if line.get_linestyle() != [(None, None)]:
         #line.set_linestyle([(None, None)])
-        line.set_color('red')
-        line.set_linewidth(1.5)
+        #line.set_color('red')
+        # reduce the line size only if 'main' contours are needed : 
+        if levels_2 is not None: line.set_linewidth(1.5)
     if levels_2 is not None:
-      cs2 = ax.tricontour(x, y, t, v, levels=levels_2, colors='0.30') 
+      cs2 = ax.tricontour(x, y, v, triangles=t, levels=levels_2, colors='0.30') 
       for line in cs2.collections:
         if line.get_linestyle() != [(None, None)]:
           line.set_linestyle([(None, None)])
           line.set_color('#c1000e')
           line.set_linewidth(0.5)
-    ax.clabel(cs, inline=1)
+    ax.clabel(cs, inline=1, fmt=cb_format)
 
   # plot vectors, if desired :
   if vec and plot_quiver:
@@ -328,13 +385,18 @@ def plot_variable(u, name, direc,
   
   ax.set_xlim([x.min(), x.max()])
   ax.set_ylim([y.min(), y.max()])
-  plt.tight_layout(rect=[0,0,1,0.95])
+  #if title is None and cb is False:
+  #  plt.tight_layout()#rect=[0,0,1,0.95])
+  #else:
+  #  plt.tight_layout(rect=[0,0,1,0.95])
+  plt.tight_layout()
   
   #mpl.rcParams['axes.titlesize'] = 'small'
   #tit = plt.title(title)
 
   # title :
-  tit = plt.title(title)
+  if title is not None:
+    tit = plt.title(title)
   #tit.set_fontsize(40)
   
   # create the output directory : 
