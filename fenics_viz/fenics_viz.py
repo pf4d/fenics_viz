@@ -146,6 +146,8 @@ def plot_variable(u, name, direc,
                   extend              = 'neither',
                   ext                 = '.pdf',
                   plot_quiver         = True,
+                  quiver_dx           = 0,
+                  quiver_dy           = 0,
                   quiver_kwargs       = {'pivot'          : 'middle',
                                          'color'          : 'k',
                                          'alpha'          : 0.8,
@@ -230,24 +232,6 @@ def plot_variable(u, name, direc,
   if vec and normalize_vec:
     v0 = v0 / v
     v1 = v1 / v
-
-  """
-  if vec:
-    v0 = np.delete(v0, list(range(0, v0.shape[0], 2)), axis=0)
-    v0 = np.delete(v0, list(range(0, v0.shape[1], 2)), axis=1)
-
-    v1 = np.delete(v1, list(range(0, v1.shape[0], 2)), axis=0)
-    v1 = np.delete(v1, list(range(0, v1.shape[1], 2)), axis=1)
-
-    x  = np.delete(x,  list(range(0, x.shape[0], 2)),  axis=0)
-    x  = np.delete(x,  list(range(0, x.shape[1], 2)),  axis=1)
-
-    y  = np.delete(y,  list(range(0, y.shape[0], 2)),  axis=0)
-    y  = np.delete(y,  list(range(0, y.shape[1], 2)),  axis=1)
-
-    v  = np.delete(v,  list(range(0, v.shape[0], 2)),  axis=0)
-    v  = np.delete(v,  list(range(0, v.shape[1], 2)),  axis=1)
-  """
 
   if vec:  print_text("::: plotting vector variable :::", 'red')
   else:    print_text("::: plotting scalar variable :::", 'red')
@@ -365,14 +349,28 @@ def plot_variable(u, name, direc,
           line.set_color('#c1000e')
           line.set_linewidth(0.5)
     ax.clabel(cs, inline=1, fmt=cb_format)
-
-  # plot vectors, if desired :
-  if vec and plot_quiver:
-    q  = ax.quiver(x, y, v0, v1, **quiver_kwargs)
   
   # plot triangles, if desired :
   if plot_tp == True:
     tp = ax.triplot(x, y, t, **tp_kwargs)
+
+  # plot vectors, if desired :
+  if vec and plot_quiver:
+    # reduce the size of the dataset :
+    if quiver_dx > 0 and quiver_dy > 0:
+     sav_x   = np.abs(x % quiver_dx) < quiver_dx / 10.0
+     sav_y   = np.abs(y % quiver_dy) < quiver_dy / 10.0
+     sav     = np.logical_and(sav_x, sav_y)
+     v0_quiv = v0[sav]
+     v1_quiv = v1[sav]
+     x_quiv  = x[sav]
+     y_quiv  = y[sav]
+    else:
+     v0_quiv = v0
+     v1_quiv = v1
+     x_quiv  = x
+     y_quiv  = y
+    q = ax.quiver(x_quiv, y_quiv, v0_quiv, v1_quiv, **quiver_kwargs)
   
   # this enforces equal axes no matter what (yeah, a hack) : 
   divider = make_axes_locatable(ax)
