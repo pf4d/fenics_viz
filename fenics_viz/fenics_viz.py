@@ -146,8 +146,7 @@ def plot_variable(u, name, direc,
                   extend              = 'neither',
                   ext                 = '.pdf',
                   plot_quiver         = True,
-                  quiver_dx           = 0,
-                  quiver_dy           = 0,
+                  quiver_skip         = 0,
                   quiver_kwargs       = {'pivot'          : 'middle',
                                          'color'          : 'k',
                                          'alpha'          : 0.8,
@@ -357,10 +356,8 @@ def plot_variable(u, name, direc,
   # plot vectors, if desired :
   if vec and plot_quiver:
     # reduce the size of the dataset :
-    if quiver_dx > 0 and quiver_dy > 0:
-     sav_x   = np.abs(x % quiver_dx) < quiver_dx / 10.0
-     sav_y   = np.abs(y % quiver_dy) < quiver_dy / 10.0
-     sav     = np.logical_and(sav_x, sav_y)
+    if quiver_skip > 0:
+     sav     = range(0, len(x), quiver_skip)
      v0_quiv = v0[sav]
      v1_quiv = v1[sav]
      x_quiv  = x[sav]
