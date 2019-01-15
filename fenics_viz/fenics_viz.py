@@ -349,10 +349,6 @@ def plot_variable(u, name, direc,
 					line.set_linewidth(0.5)
 		ax.clabel(cs, inline=1, fmt=cb_format)
 
-	# plot triangles, if desired :
-	if plot_tp == True:
-		tp = ax.triplot(x, y, t, **tp_kwargs)
-
 	# plot vectors, if desired :
 	if vec and plot_quiver:
 		# reduce the size of the dataset :
@@ -369,6 +365,10 @@ def plot_variable(u, name, direc,
 			y_quiv  = y
 		q = ax.quiver(x_quiv, y_quiv, v0_quiv, v1_quiv, **quiver_kwargs)
 
+	# plot triangles, if desired :
+	if plot_tp == True:
+		tp = ax.triplot(x, y, t, **tp_kwargs)
+
 	# this enforces equal axes no matter what (yeah, a hack) :
 	divider = make_axes_locatable(ax)
 
@@ -380,11 +380,10 @@ def plot_variable(u, name, direc,
 
 	ax.set_xlim([x.min(), x.max()])
 	ax.set_ylim([y.min(), y.max()])
-	#if title is None and cb is False:
-	#  plt.tight_layout()#rect=[0,0,1,0.95])
-	#else:
-	#  plt.tight_layout(rect=[0,0,1,0.95])
-	plt.tight_layout()
+	if title is None and cb is False:
+		plt.tight_layout()
+	else:
+		plt.tight_layout(rect=[0,0,1,0.95])
 
 	#mpl.rcParams['axes.titlesize'] = 'small'
 	#tit = plt.title(title)
