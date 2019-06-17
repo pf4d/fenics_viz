@@ -30,12 +30,12 @@ def print_text(text, color='white', atrb=0, cls=None):
 	"""
 	if cls is not None:
 		color = cls.color()
-	if fe.MPI.rank(fe.mpi_comm_world())==0:
+	if fe.MPI.rank(fe.MPI.comm_world)==0:
 		if atrb != 0:
 			text = ('%s%s' + text + '%s') % (fg(color), attr(atrb), attr(0))
 		else:
 			text = ('%s' + text + '%s') % (fg(color), attr(0))
-		print text
+		print(text)
 
 
 def print_min_max(u, title, color='97'):
@@ -50,21 +50,21 @@ def print_min_max(u, title, color='97'):
 	:type color: string
 	"""
 	if isinstance(u, fe.GenericVector):
-		uMin = MPI.min(fe.mpi_comm_world(), u.min())
-		uMax = MPI.max(fe.mpi_comm_world(), u.max())
+		uMin = MPI.min(fe.MPI.comm_world, u.min())
+		uMax = MPI.max(fe.MPI.comm_world, u.max())
 		s    = title + ' <min, max> : <%.3e, %.3e>' % (uMin, uMax)
 		print_text(s, color)
 	elif isinstance(u, np.ndarray):
 		if u.dtype != np.float64:
 			u = u.astype(np.float64)
-		uMin = fe.MPI.min(fe.mpi_comm_world(), u.min())
-		uMax = fe.MPI.max(fe.mpi_comm_world(), u.max())
+		uMin = fe.MPI.min(fe.MPI.comm_world, u.min())
+		uMax = fe.MPI.max(fe.MPI.comm_world, u.max())
 		s    = title + ' <min, max> : <%.3e, %.3e>' % (uMin, uMax)
 		print_text(s, color)
 	elif isinstance(u, fe.Function):# \
 		#   or isinstance(u, dolfin.functions.function.Function):
-		uMin = MPI.min(fe.mpi_comm_world(), u.vector().min())
-		uMax = MPI.max(fe.mpi_comm_world(), u.vector().max())
+		uMin = MPI.min(fe.MPI.comm_world, u.vector().min())
+		uMax = MPI.max(fe.MPI.comm_world, u.vector().max())
 		s    = title + ' <min, max> : <%.3e, %.3e>' % (uMin, uMax)
 		print_text(s, color)
 	elif isinstance(u, int) or isinstance(u, float):
